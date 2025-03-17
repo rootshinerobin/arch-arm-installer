@@ -46,14 +46,14 @@ If you face installation failures, you can resume by running:
 ```bash
 cd arch-arm-installer
 sudo ./arch-arm-installer.sh
-
+```
 The script will resume from the last successful step.
 
 To manually check logs:
 
 ```bash
 cat /mnt/install_progress.log
-
+```
 🚀 Contributing
 
 Feel free to suggest improvements or report bugs by opening an Issue or a Pull Request.
