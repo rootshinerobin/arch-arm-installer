@@ -15,8 +15,7 @@ git clone https://github.com/rootshinerobin/arch-arm-installer.git
 cd arch-arm-installer
 chmod +x arch-arm-installer.sh
 sudo ./arch-arm-installer.sh
----
-
+```
 🛠️ Features
 
 ✅ Automated Partitioning (GPT, EFI, Root)
