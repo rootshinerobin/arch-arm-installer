@@ -1,4 +1,4 @@
-# 🚀 Arch Linux ARM Automated Installer for Parallels (AArch64)
+# Arch Linux ARM Automated Installer for Parallels (AArch64)
 
 This script automates the installation of **Arch Linux ARM** on **Parallels (AArch64) or any linux live system**.  
 It handles **partitioning, formatting, system setup, package installation, and bootloader configuration**.
@@ -54,7 +54,7 @@ To manually check logs:
 ```bash
 cat /mnt/install_progress.log
 ```
-🚀 Contributing
+Contributing
 
 Feel free to suggest improvements or report bugs by opening an Issue or a Pull Request.
 
