@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Exit if any command fails
+# Exit on error
 set -e
 
 LOG_FILE="/mnt/install_progress.log"
@@ -12,7 +12,7 @@ ask() {
     while true; do
         read -p "$1 (y/n): " yn
         case $yn in
-            [Yy]* ) return 0;;  # Continue to next step
+            [Yy]* ) return 0;;  # Continue
             [Nn]* ) echo "❌ Installation Aborted!"; exit 1;;
             * ) echo "Please answer y or n.";;
         esac
@@ -27,54 +27,70 @@ check_progress() {
 ### FUNCTION TO UNMOUNT EVERYTHING ###
 cleanup_mounts() {
     echo "🔄 Cleaning up old mounts..."
-    sudo umount -l /mnt/boot/efi 2>/dev/null || true
-    sudo umount -l /mnt/sys 2>/dev/null || true
-    sudo umount -l /mnt/proc 2>/dev/null || true
-    sudo umount -l /mnt/dev 2>/dev/null || true
-    sudo umount -l /mnt/run 2>/dev/null || true
-    sudo umount -l /mnt 2>/dev/null || true
+    sudo umount -lf /mnt/boot/efi 2>/dev/null || true
+    sudo umount -lf /mnt/sys 2>/dev/null || true
+    sudo umount -lf /mnt/proc 2>/dev/null || true
+    sudo umount -lf /mnt/dev 2>/dev/null || true
+    sudo umount -lf /mnt/run 2>/dev/null || true
+    sudo umount -lf /mnt 2>/dev/null || true
 }
 
-### FUNCTION TO CHECK MOUNTS ###
-check_mounts() {
-    echo "📡 Checking if /mnt is already mounted..."
-    if mount | grep -q "/mnt"; then
-        echo "⚠️ /mnt is already mounted. Unmounting..."
-        cleanup_mounts
-    fi
-}
-
-### FUNCTION TO FIX CHROOT ISSUES ###
+### FUNCTION TO CHECK & FIX CHROOT ###
 fix_chroot() {
-    echo "🔍 Checking if chroot setup is broken..."
-    for dir in /mnt/proc /mnt/sys /mnt/dev /mnt/run; do
-        if ! mountpoint -q "$dir"; then
-            echo "⚠️ $dir is not mounted! Fixing..."
-            mount --rbind /sys /mnt/sys
-            mount --rbind /dev /mnt/dev
-            mount --rbind /run /mnt/run
-            mount -t proc /proc /mnt/proc
-        fi
-    done
+    echo "🔍 Checking chroot setup..."
+    cleanup_mounts
+
+    # Ensure dependencies exist
+    sudo apt update && sudo apt install -y arch-install-scripts
+
+    # Ensure clean mount
+    sudo mount -t proc /proc /mnt/proc
+    sudo mount --rbind /sys /mnt/sys
+    sudo mount --rbind /dev /mnt/dev
+    sudo mount --rbind /run /mnt/run
 }
 
+### FUNCTION TO ENTER CHROOT SAFELY ###
+enter_chroot() {
+    echo "🚀 Attempting to enter Arch Linux Chroot..."
+    
+    # Try normal arch-chroot
+    if arch-chroot /mnt; then
+        echo "✅ Successfully entered chroot using arch-chroot!"
+        return 0
+    fi
+    
+    # Try standard chroot
+    if chroot /mnt /bin/bash; then
+        echo "✅ Successfully entered chroot using chroot!"
+        return 0
+    fi
+
+    # Try systemd-nspawn
+    if systemd-nspawn -D /mnt; then
+        echo "✅ Successfully entered chroot using systemd-nspawn!"
+        return 0
+    fi
+
+    # Try using env -i
+    if sudo env -i HOME=/root TERM="$TERM" /usr/sbin/chroot /mnt /bin/bash; then
+        echo "✅ Successfully entered chroot using env!"
+        return 0
+    fi
+
+    echo "❌ Chroot failed! Debugging info:"
+    dmesg | tail -50
+    exit 1
+}
+
+# Create log file
 echo "📄 Creating Progress Log at $LOG_FILE"
 touch "$LOG_FILE"
 
-# Step 1: Update Ubuntu Live & Install `arch-chroot`
-if check_progress "INSTALL_CHROOT_DONE"; then
-    ask "📦 Update Ubuntu Live & Install arch-chroot?"
-    sudo apt update -y || { echo "❌ Failed to update packages. Check your network."; exit 1; }
-    sudo apt install -y arch-install-scripts || { echo "❌ Failed to install arch-install-scripts."; exit 1; }
-    echo "INSTALL_CHROOT_DONE" >> "$LOG_FILE"
-fi
-
-# Step 2: Wipe Disk and Partition
+# Step 1: Partitioning
 if check_progress "PARTITION_DONE"; then
-    ask "🛠️ Wipe and partition the disk?"
-    check_mounts
-    wipefs -a /dev/sda
-    echo "🛠️ Partitioning Disk..."
+    ask "🛠️ Partition and format the disk?"
+    cleanup_mounts
     (
     echo g        # Create GPT Partition Table
     echo n        # New Partition (EFI)
@@ -94,7 +110,7 @@ if check_progress "PARTITION_DONE"; then
     echo "PARTITION_DONE" >> "$LOG_FILE"
 fi
 
-# Step 3: Format Partitions
+# Step 2: Format Partitions
 if check_progress "FORMAT_DONE"; then
     ask "🖥️ Format partitions?"
     mkfs.fat -F32 /dev/sda1
@@ -102,7 +118,7 @@ if check_progress "FORMAT_DONE"; then
     echo "FORMAT_DONE" >> "$LOG_FILE"
 fi
 
-# Step 4: Mount Partitions
+# Step 3: Mount Partitions
 if check_progress "MOUNT_DONE"; then
     ask "📂 Mount partitions?"
     mount /dev/sda2 /mnt
@@ -111,31 +127,28 @@ if check_progress "MOUNT_DONE"; then
     echo "MOUNT_DONE" >> "$LOG_FILE"
 fi
 
-# Step 5: Download & Extract Arch Linux ARM
+# Step 4: Download & Extract Arch Linux ARM
 if check_progress "DOWNLOAD_DONE"; then
     ask "📦 Download and extract Arch Linux ARM?"
-    wget --tries=3 --timeout=20 -O /mnt/arch.tar.gz http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz || {
-        echo "❌ Failed to download Arch Linux ARM. Check your internet connection."
-        exit 1
-    }
+    wget http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz -O /mnt/arch.tar.gz
     tar -xpf /mnt/arch.tar.gz -C /mnt
     sync
     echo "DOWNLOAD_DONE" >> "$LOG_FILE"
 fi
 
-# Step 6: Prepare for chroot
+# Step 5: Prepare for chroot
 if check_progress "MOUNT_SYSTEM_DONE"; then
     ask "🔗 Mount system directories?"
     fix_chroot
     echo "MOUNT_SYSTEM_DONE" >> "$LOG_FILE"
 fi
 
-# Step 7: Enter Chroot and Install Arch Linux
+# Step 6: Enter Chroot
 if check_progress "CHROOT_DONE"; then
-    ask "🚀 Enter chroot?"
-    arch-chroot /mnt /bin/bash << 'EOF'
+    ask "🚀 Enter chroot and install Arch Linux?"
+    enter_chroot << 'EOF'
 
-# Step 8: System Configuration
+# Step 7: System Configuration
 echo "🌍 Setting up Locale and Timezone..."
 ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
 hwclock --systohc
@@ -147,24 +160,31 @@ echo "127.0.1.1 archlinux.localdomain archlinux" >> /etc/hosts
 # Generate Locale
 sed -i 's/#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
 locale-gen
+echo "LOCALE_DONE" >> "$LOG_FILE"
 
-# Step 9: Install Essential Packages
-pacman -Syu --noconfirm
-pacman -S base linux linux-firmware nano sudo networkmanager grub efibootmgr bash-completion \
-mesa git xdg-utils xdg-user-dirs --noconfirm
+# Step 8: Install Essential Packages
+if check_progress "PACKAGES_DONE"; then
+    ask "🛠️ Install essential packages?"
+    pacman -Syu --noconfirm
+    pacman -S base linux linux-firmware nano sudo networkmanager grub efibootmgr bash-completion \
+    mesa git xdg-utils xdg-user-dirs --noconfirm
+    echo "PACKAGES_DONE" >> "$LOG_FILE"
+fi
 
-# Step 10: Install Bootloader
-grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
-grub-mkconfig -o /boot/grub/grub.cfg
+# Step 9: Install Bootloader
+if check_progress "BOOTLOADER_DONE"; then
+    ask "🔧 Install bootloader?"
+    grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+    grub-mkconfig -o /boot/grub/grub.cfg
+    echo "BOOTLOADER_DONE" >> "$LOG_FILE"
+fi
 
-# Step 11: Set Root Password
-echo "root:toor" | chpasswd
-
+echo "✅ Installation Complete! Exiting Chroot..."
 EOF
     echo "CHROOT_DONE" >> "$LOG_FILE"
 fi
 
-# Step 12: Unmount & Reboot
+# Step 10: Unmount & Reboot
 if check_progress "REBOOT_DONE"; then
     ask "🔄 Unmount and reboot?"
     cleanup_mounts
