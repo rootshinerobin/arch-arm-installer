@@ -18,14 +18,14 @@ sudo ./arch-arm-installer.sh
 ```
 🛠️ Features
 
-✅ Automated Partitioning (GPT, EFI, Root)
-✅ Downloads & Extracts Arch Linux ARM
-✅ Configures Chroot Environment
-✅ Sets Up Bootloader (GRUB for AArch64)
-✅ Auto-Resume (Script remembers the last successful step and continues from there)
-✅ Yes/No Prompts (Control installation at every step)
-✅ Network & Keyring Fixes
-✅ Error Handling & Debugging Logs
+    ✅ Automated Partitioning (GPT, EFI, Root)
+    ✅ Downloads & Extracts Arch Linux ARM
+    ✅ Configures Chroot Environment
+    ✅ Sets Up Bootloader (GRUB for AArch64)
+    ✅ Auto-Resume (Script remembers the last successful step and continues from there)
+    ✅ Yes/No Prompts (Control installation at every step)
+    ✅ Network & Keyring Fixes
+    ✅ Error Handling & Debugging Logs
 
 📌 Installation Steps (Automatically Handled)
 
